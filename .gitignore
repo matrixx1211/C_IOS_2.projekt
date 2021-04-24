@@ -1,0 +1,8 @@
+# Executable
+proj2
+
+# Object files
+*.o
+
+# Visual studio code
+.vscode
