@@ -15,3 +15,5 @@
 - [ ] reindeer.h
 - [ ] reindeer.c
 
+**FORK()**
+On success, the PID of the child process is returned in the parent, and 0 is returned in the child.  On failure, -1 is returned in the parent, no child process is created, and errno is set appropriately.
