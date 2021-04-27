@@ -6,3 +6,9 @@ proj2
 
 # Visual studio code
 .vscode
+
+#Folders
+NIU
+
+#Output files
+*.out
