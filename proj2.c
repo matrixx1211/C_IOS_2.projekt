@@ -5,13 +5,14 @@
 
 #include <stdio.h>
 #include <stdlib.h>
-#include <ctype.h>
-#include <semaphore.h>
-#include <unistd.h>
+#include <stdbool.h>
 
-//I'm not sure
-#include <sys/types.h>
-#include <signal.h>
+#include <semaphore.h> //veškeré funkce pro práci se semafory
+#include <unistd.h>    //funkce fork() pro vytvoření procesů
+#include <sys/types.h> //sytémové typy jako pid_t
+#include <sys/wait.h>  //funkce wait()
+#include <time.h>      //funkce time()
+#include <sys/mman.h>  //funkce mmap()
 
 #include "proj2.h"
 /*#include "santa.h"
@@ -37,16 +38,16 @@ void args_test(int argc, char const *argv[], shared_t *shared)
     if (argc == 5)
     {
         //nastaví NE ve struktuře a otestuje hodnotu
-        shared->number_elf = arg_test(atoi(argv[1]), NEMIN, NEMAX);
+        shared->pocet_elfu = arg_test(atoi(argv[1]), NEMIN, NEMAX);
 
         //nastaví NR ve struktuře a otestuje hodnotu
-        shared->number_reindeer = arg_test(atoi(argv[2]), NRMIN, NRMAX);
+        shared->pocet_sobu = arg_test(atoi(argv[2]), NRMIN, NRMAX);
 
         //nastaví TE ve struktuře a otestuje hodnotu
-        shared->time_elf = arg_test(atoi(argv[3]), TMIN, TMAX);
+        shared->cas_elfa = arg_test(atoi(argv[3]), TMIN, TMAX);
 
         //nastaví TR ve struktuře a otestuje hodnotu
-        shared->time_reindeer = arg_test(atoi(argv[4]), TMIN, TMAX);
+        shared->cas_soba = arg_test(atoi(argv[4]), TMIN, TMAX);
     }
     else
     {
@@ -63,136 +64,166 @@ void init_sem(shared_t *shared, sem_t *sem_to_init, int pshared, unsigned int va
     {
         fprintf(stderr, "PROJ2: Nepovedlo se inicializovat semafor.\n");
         //TODO: uvolnění zdrojů //! možná tu bude ještě něco navíc
-        destroy_sem(shared);
+        destroy_all_sem(shared);
         exit(EXIT_FAILURE);
     }
 }
 
 void init_all_sem(shared_t *shared)
 {
-    init_sem(shared, &(shared->santa_sem), 1, 0);
+    //všechny mají hodnotu 1 -> tudiž jsou odemčené
+    init_sem(shared, &(shared->santa_sem), 1, 1);
     init_sem(shared, &(shared->elf_sem), 1, 1);
-    init_sem(shared, &(shared->reindeer_sem), 1, 1);
+    init_sem(shared, &(shared->sob_sem), 1, 1);
     init_sem(shared, &(shared->output_sem), 1, 1);
+    init_sem(shared, &(shared->error_output_sem), 1, 1);
+    init_sem(shared, &(shared->vanoce_sem), 1, 1);
 }
 
-void process_Santa_Clause(shared_t *shared)
+void destroy_all_sem(shared_t *shared)
 {
-    //deklarace procesu pro Santu
+    //semafory pro práci procesy Santy/elfů/sobů
+    sem_destroy(&(shared->santa_sem));
+    sem_destroy(&(shared->elf_sem));
+    sem_destroy(&(shared->sob_sem));
+    sem_destroy(&(shared->vanoce_sem));
+    //semafory pro práci s výstupem
+    sem_destroy(&(shared->error_output_sem));
+    sem_destroy(&(shared->output_sem));
+}
+
+int process_Santa_Clause(shared_t *shared)
+{
     pid_t santa;
-
-    //vytvoření procesu Santy
     santa = fork();
-
-    //pokud se nepovede vytvořit proces,
-    //tak vypíše chybu, uvolní zdroje a ukončí se s kódem 1
     if (santa == -1)
     {
         fprintf(stderr, "PROJ2: Neočekávaná chyba při vytváření procesu.\n");
-        //TODO: uvolnění zdrojů //! možná tu bude ještě něco navíc
-        destroy_sem(shared);
+        destroy_all_sem(shared);
         exit(EXIT_FAILURE);
     }
-}
 
-void process_Reindeer(shared_t *shared)
-{
-    //deklarace procesu pro soba
-    pid_t reindeer;
-
-    //vytvoření n procesů soba podle zadaných argumentů
-    for (int i = 0; i < shared->number_reindeer; i++)
+    if (santa == 0)
     {
-        //vytvoří proces a vrátí PID, parent vrátí child PID a child vrátí 0 v případě, že se povede, jinak parent vrátí -1
-        reindeer = fork();
-
-        //pokud se nepovede vytvořit proces,
-        //tak vypíše chybu, uvolní zdroje a ukončí se s kódem 1
-        if (reindeer == -1)
+        sem_wait(&shared->output_sem);
+        shared->pocet_radku++;
+        fprintf(shared->output_f, "%ld: Santa: going to sleep\n", shared->pocet_radku);
+        fflush(shared->output_f);
+        while (true)
         {
-            fprintf(stderr, "PROJ2: Neočekávaná chyba při vytváření procesu.\n");
-            //TODO: uvolnění zdrojů //! možná tu bude ještě něco navíc
-            destroy_sem(shared);
-            exit(EXIT_FAILURE);
-        }
+            //pokud jsou před dílnou 3 elfové, kteří potřebují pomoct
 
-        //!DEBUG
-        if (reindeer != 0)
-            printf("PROCESS ID: %d, reindeer byl vytvořen.\n", reindeer);
+            return 1;
+        }
     }
+    return 0;
 }
 
-void process_Elf(shared_t *shared)
+int process_Elf(shared_t *shared)
 {
     //deklarace procesu pro elfa
     pid_t elf;
+    pid_t fronta[shared->pocet_elfu];
+    shared->fronta_elfu = fronta;
 
     //vytvoření n procesů elfa podle zadaných argumentů
-    for (int i = 0; i < shared->number_elf; i++)
+    for (int i = 0; i < shared->pocet_elfu; i++)
     {
-        //vytvoří proces a vrátí PID, parent vrátí child PID a child vrátí 0 v případě, že se povede, jinak parent vrátí -1
+        //vytvoří nový proces a zkontroluje se, jestli se vytvořil
         elf = fork();
-
-        //pokud se nepovede vytvořit proces,
-        //tak vypíše chybu, uvolní zdroje a ukončí se s kódem 1
         if (elf == -1)
         {
             fprintf(stderr, "PROJ2: Neočekávaná chyba při vytváření procesu.\n");
-            //TODO: uvolnění zdrojů //! možná tu bude ještě něco navíc
-            destroy_sem(shared);
+            destroy_all_sem(shared);
             exit(EXIT_FAILURE);
         }
 
-        //!DEBUG
-        if (elf != 0)
-            printf("PROCESS ID: %d, elf byl vytvořen.\n", elf);
+        //pokud pid = 0, jedná se o child proces
+        if (elf == 0)
+        {
+            sem_wait(&shared->elf_sem);
+
+            sem_wait(&shared->output_sem);
+            shared->pocet_radku++;
+            fprintf(shared->output_f, "%ld: Elf %d: started\n", shared->pocet_radku, i + 1); //na začátku se ohlásí
+            fflush(shared->output_f);
+            sem_post(&shared->output_sem);
+
+            srand(time(NULL) * i);                             //seed pro random funkci vynásobený i kvůli rozdílným hodnotám
+            usleep((rand() % shared->cas_elfa) * TIMECONVERT); //doba, po kterou elf pracuje sám
+            if ((elf = getpid()) != 0)
+                fronta[i] = elf;
+
+            shared->pocet_radku++;
+            fprintf(shared->output_f, "%ld: Elf %d: get help\n", shared->pocet_radku, i + 1); //na začátku se ohlásí
+
+            sem_post(&shared->elf_sem);
+            return 1; //řekne, že se má ukončit child proces
+        }
     }
+    return 0;
 }
 
-void destroy_sem(shared_t *shared)
+int process_Reindeer(shared_t *shared)
 {
-    //zničí semafor output_sem
-    sem_destroy(&(shared->output_sem));
+    //deklarace procesu pro soba
+    pid_t sob;
 
-    //zničí semafor santa_sem
-    sem_destroy(&(shared->santa_sem));
+    //vytvoření n procesů soba podle zadaných argumentů
+    for (int i = 0; i < shared->pocet_sobu; i++)
+    {
+        //vytvoří proces a vrátí PID, parent vrátí child PID a child vrátí 0 v případě, že se povede, jinak parent vrátí -1
+        sob = fork();
 
-    //zničí semafor elf_sem
-    sem_destroy(&(shared->elf_sem));
+        //pokud se nepovede vytvořit proces,
+        //tak vypíše chybu, uvolní zdroje a ukončí se s kódem 1
+        if (sob == -1)
+        {
+            fprintf(stderr, "PROJ2: Neočekávaná chyba při vytváření procesu.\n");
+            //TODO: uvolnění zdrojů //! možná tu bude ještě něco navíc
+            destroy_all_sem(shared);
+            exit(EXIT_FAILURE);
+        }
 
-    //zničí semafor reindeer_sem
-    sem_destroy(&(shared->reindeer_sem));
+        //child proces
+        if (sob == 0)
+        {
+            sem_wait(&shared->output_sem);
+            shared->pocet_radku++;
+            fprintf(shared->output_f, "%ld: RD %d: rstarted\n", shared->pocet_radku, i + 1);
+            fflush(shared->output_f);
+            sem_post(&shared->output_sem);
+            return 1;
+        }
+    }
+    return 0;
 }
 
 int main(int argc, char const *argv[])
 {
-    //structure with passed argumets on cmd line
-    shared_t shared;
+    //vytvoření sdílené paměti
+    shared_t *shared = mmap(NULL, sizeof(shared), PROT_READ | PROT_WRITE, MAP_SHARED | MAP_ANONYMOUS, 0, 0);
+    shared->output_f = fopen("proj2.out", "w");
 
-    //testuje jestli předané parametry byli zadány správně
-    args_test(argc, argv, &shared);
+    //kontrola argumentů
+    args_test(argc, argv, shared);
 
-    //inicializuje semafory
-    init_all_sem(&shared);
+    //vytvoření semaforů
+    init_all_sem(shared);
 
-    //deklarace souboru pro výstup
-    FILE *output_f;
-
-    //otevření souboru
-    output_f = fopen("proj2.out", "wx");
-    (void)output_f;
-
-    //vytvoří proces Santa Claus
-    process_Santa_Clause(&shared);
-
-    //vytvoří proces sob
-    process_Reindeer(&shared);
-
-    //vytvoří proces elf
-    process_Elf(&shared);
+    //volání procesů a jejich následné ukončení
+    if (process_Santa_Clause(shared))
+        return 0; //umře proces (Santa jde makat)
+    if (process_Reindeer(shared))
+        return 0; //umře proces (Soby jdou na brigádu za minimální mzdu)
+    if (process_Elf(shared))
+        return 0; //umře proces (Elfové jdou konečně dovolenkovat)
 
     //zničí všechny semafory
-    destroy_sem(&shared);
+    destroy_all_sem(shared);
 
+    //uvolní sdílenou paměť
+    if (munmap(shared, sizeof(shared)) == -1)
+        fprintf(stderr, "PROJ2: Nepovedlo se vyčistit sdílenou paměť.\n");
     return 0;
 }

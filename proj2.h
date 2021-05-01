@@ -18,23 +18,32 @@
 #define TMIN 0
 #define TMAX 1000
 
+/* hodnota konvertující čas z mikrosekund */
+#define TIMECONVERT 1000 //z us na ms
+
 /* sdílená struktura pro procesy se všema hodnotama */
 typedef struct
 {
     //argumenty
-    int number_elf;
-    int number_reindeer;
-    int time_elf;
-    int time_reindeer;
+    int pocet_elfu;
+    int pocet_sobu;
+    int cas_elfa;
+    int cas_soba;
 
-    //semafory
+    //proces semafory
     sem_t santa_sem;
     sem_t elf_sem;
-    sem_t reindeer_sem;
+    sem_t sob_sem;
+    sem_t vanoce_sem;
+
+    //output semafory
+    sem_t error_output_sem;
     sem_t output_sem;
 
     //ostatní
-    unsigned long line_count; // počítadlo
+    size_t pocet_radku; //počítadlo řádků
+    pid_t *fronta_elfu; //fronta, ve které jsou elfové
+    FILE *output_f;     //soubor pro výstup
 } shared_t;
 
 /* Testuje, jestli argumenty byly zadány správně */
@@ -50,15 +59,15 @@ void init_sem(shared_t *shared, sem_t *sem_to_init, int pshared, unsigned int va
 void init_all_sem(shared_t *shared);
 
 /* Proces Santa Claus */
-void process_Santa_Clause(shared_t *shared);
+int process_Santa_Clause(shared_t *shared);
 
 /* Proces sob  */
-void process_Reindeer(shared_t *shared);
+int process_Reindeer(shared_t *shared);
 
 /* Proces ell */
-void process_Elf(shared_t *shared);
+int process_Elf(shared_t *shared);
 
 /* Zničí všechny semafory */
-void destroy_sem(shared_t *shared);
+void destroy_all_sem(shared_t *shared);
 
 #endif // __IOS_PROJ2__
