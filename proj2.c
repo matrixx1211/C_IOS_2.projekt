@@ -52,7 +52,7 @@ void args_test(int argc, char const *argv[], shared_t *shared)
     else
     {
         //vypíše error a ukončí se s kódem 1
-        fprintf(stderr, "PROJ2: Očekávaný počet argumentů -> %d, zadáno -> %d.\n", 5, argc);
+        fprintf(stderr, "PROJ2: Očekávaný počet argumentů -> 4, zadáno -> %d.\n", argc - 1);
         exit(EXIT_FAILURE);
     }
 }
@@ -73,11 +73,11 @@ void init_all_sem(shared_t *shared)
 {
     //všechny mají hodnotu 1 -> tudiž jsou odemčené
     init_sem(shared, &(shared->santa_sem), 1, 1);
-    init_sem(shared, &(shared->elf_sem), 1, 1);
-    init_sem(shared, &(shared->sob_sem), 1, 1);
+    init_sem(shared, &(shared->elf_sem), 1, 0);
+    init_sem(shared, &(shared->sob_sem), 1, 0);
     init_sem(shared, &(shared->output_sem), 1, 1);
-    init_sem(shared, &(shared->error_output_sem), 1, 1);
-    init_sem(shared, &(shared->vanoce_sem), 1, 1);
+    init_sem(shared, &(shared->error_output_sem), 1, 0);
+    init_sem(shared, &(shared->vanoce_sem), 1, 0);
 }
 
 void destroy_all_sem(shared_t *shared)
@@ -92,111 +92,85 @@ void destroy_all_sem(shared_t *shared)
     sem_destroy(&(shared->output_sem));
 }
 
-int process_Santa_Clause(shared_t *shared)
+void process_Santa_Clause(shared_t *shared)
 {
-    pid_t santa;
-    santa = fork();
+    pid_t santa = fork();
     if (santa == -1)
     {
-        fprintf(stderr, "PROJ2: Neočekávaná chyba při vytváření procesu.\n");
+        fprintf(stderr, "PROJ2: Chyba při vytváření Santy.\n");
         destroy_all_sem(shared);
         exit(EXIT_FAILURE);
     }
 
     if (santa == 0)
     {
+        sem_wait(&shared->santa_sem);
         sem_wait(&shared->output_sem);
-        shared->pocet_radku++;
-        fprintf(shared->output_f, "%ld: Santa: going to sleep\n", shared->pocet_radku);
+        fprintf(shared->output_f, "%ld: Santa: going to sleep\n", ++shared->pocet_radku);
         fflush(shared->output_f);
-        while (true)
+        sem_post(&shared->output_sem);
+        sem_post(&shared->elf_sem);
+        sem_post(&shared->sob_sem);
+        while (true) //čeká na elfy/soby
         {
-            //pokud jsou před dílnou 3 elfové, kteří potřebují pomoct
-
-            return 1;
+            sem_wait(&shared->santa_sem);
+            if (shared->cinnost == 1) //v případě elfů
+            {
+                //sem_wait(&shared->output_sem);
+                fprintf(shared->output_f, "%ld: Santa: helping elves\n", ++shared->pocet_radku);
+                fprintf(shared->output_f, "%ld: Santa: going to sleep\n", ++shared->pocet_radku);
+                fflush(shared->output_f);
+                //sem_post(&shared->output_sem);
+                shared->cinnost = 0;
+            }
+            if (shared->cinnost == 2) //v případě sobů
+            {
+                if (shared->pocet_sobu == 0)
+                {
+                    //sem_wait(&shared->elf_sem);
+                    //sem_wait(&shared->output_sem);
+                    fprintf(shared->output_f, "%ld: Santa: closing workshop\n", ++shared->pocet_radku);
+                    fprintf(shared->output_f, "%ld: Santa: Christmas started\n", ++shared->pocet_radku);
+                    fflush(shared->output_f);
+                    //sem_post(&shared->output_sem);
+                    shared->cinnost = 1;
+                    //sem_post(&shared->santa_sem);
+                    //sem_post(&shared->elf_sem);
+                    exit(EXIT_SUCCESS);
+                }
+                shared->pocet_sobu--;
+                shared->cinnost = 0;
+            }
         }
+        exit(EXIT_SUCCESS);
     }
-    return 0;
 }
 
-int process_Elf(shared_t *shared)
+void process_Elf(shared_t *shared)
 {
-    //deklarace procesu pro elfa
-    pid_t elf;
-    pid_t fronta[shared->pocet_elfu];
-    shared->fronta_elfu = fronta;
-
-    //vytvoření n procesů elfa podle zadaných argumentů
     for (int i = 0; i < shared->pocet_elfu; i++)
     {
-        //vytvoří nový proces a zkontroluje se, jestli se vytvořil
-        elf = fork();
+        pid_t elf = fork();
         if (elf == -1)
         {
-            fprintf(stderr, "PROJ2: Neočekávaná chyba při vytváření procesu.\n");
+            fprintf(stderr, "PROJ2: Nepodařilo se vytvořit elfa.\n");
             destroy_all_sem(shared);
             exit(EXIT_FAILURE);
         }
-
-        //pokud pid = 0, jedná se o child proces
         if (elf == 0)
         {
             sem_wait(&shared->elf_sem);
-
             sem_wait(&shared->output_sem);
-            shared->pocet_radku++;
-            fprintf(shared->output_f, "%ld: Elf %d: started\n", shared->pocet_radku, i + 1); //na začátku se ohlásí
+            fprintf(shared->output_f, "%ld: Elf %d: started\n", ++shared->pocet_radku, i + 1);
             fflush(shared->output_f);
             sem_post(&shared->output_sem);
-
-            srand(time(NULL) * i);                             //seed pro random funkci vynásobený i kvůli rozdílným hodnotám
             usleep((rand() % shared->cas_elfa) * TIMECONVERT); //doba, po kterou elf pracuje sám
-            if ((elf = getpid()) != 0)
-                fronta[i] = elf;
-
-            shared->pocet_radku++;
-            fprintf(shared->output_f, "%ld: Elf %d: get help\n", shared->pocet_radku, i + 1); //na začátku se ohlásí
-
+            shared->cinnost=1;
+            sem_post(&shared->santa_sem);
             sem_post(&shared->elf_sem);
-            return 1; //řekne, že se má ukončit child proces
+            exit(EXIT_SUCCESS);
         }
     }
-    return 0;
-}
-
-int process_Reindeer(shared_t *shared)
-{
-    //deklarace procesu pro soba
-    pid_t sob;
-
-    //vytvoření n procesů soba podle zadaných argumentů
-    for (int i = 0; i < shared->pocet_sobu; i++)
-    {
-        //vytvoří proces a vrátí PID, parent vrátí child PID a child vrátí 0 v případě, že se povede, jinak parent vrátí -1
-        sob = fork();
-
-        //pokud se nepovede vytvořit proces,
-        //tak vypíše chybu, uvolní zdroje a ukončí se s kódem 1
-        if (sob == -1)
-        {
-            fprintf(stderr, "PROJ2: Neočekávaná chyba při vytváření procesu.\n");
-            //TODO: uvolnění zdrojů //! možná tu bude ještě něco navíc
-            destroy_all_sem(shared);
-            exit(EXIT_FAILURE);
-        }
-
-        //child proces
-        if (sob == 0)
-        {
-            sem_wait(&shared->output_sem);
-            shared->pocet_radku++;
-            fprintf(shared->output_f, "%ld: RD %d: rstarted\n", shared->pocet_radku, i + 1);
-            fflush(shared->output_f);
-            sem_post(&shared->output_sem);
-            return 1;
-        }
-    }
-    return 0;
 }
 
 int main(int argc, char const *argv[])
@@ -211,13 +185,9 @@ int main(int argc, char const *argv[])
     //vytvoření semaforů
     init_all_sem(shared);
 
-    //volání procesů a jejich následné ukončení
-    if (process_Santa_Clause(shared))
-        return 0; //umře proces (Santa jde makat)
-    if (process_Reindeer(shared))
-        return 0; //umře proces (Soby jdou na brigádu za minimální mzdu)
-    if (process_Elf(shared))
-        return 0; //umře proces (Elfové jdou konečně dovolenkovat)
+    //volání procesů
+    process_Santa_Clause(shared);
+    process_Elf(shared);
 
     //zničí všechny semafory
     destroy_all_sem(shared);

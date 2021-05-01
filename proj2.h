@@ -44,6 +44,7 @@ typedef struct
     size_t pocet_radku; //počítadlo řádků
     pid_t *fronta_elfu; //fronta, ve které jsou elfové
     FILE *output_f;     //soubor pro výstup
+    int cinnost;        //cinnost Santy
 } shared_t;
 
 /* Testuje, jestli argumenty byly zadány správně */
@@ -59,13 +60,13 @@ void init_sem(shared_t *shared, sem_t *sem_to_init, int pshared, unsigned int va
 void init_all_sem(shared_t *shared);
 
 /* Proces Santa Claus */
-int process_Santa_Clause(shared_t *shared);
+void process_Santa_Clause(shared_t *shared);
 
 /* Proces sob  */
-int process_Reindeer(shared_t *shared);
+void process_Reindeer(shared_t *shared);
 
 /* Proces ell */
-int process_Elf(shared_t *shared);
+void process_Elf(shared_t *shared);
 
 /* Zničí všechny semafory */
 void destroy_all_sem(shared_t *shared);
