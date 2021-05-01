@@ -21,6 +21,11 @@
 /* hodnota konvertující čas z mikrosekund */
 #define TIMECONVERT 1000 //z us na ms
 
+/* definuje typ, jestli se jedná o Santu/elfa/soba */
+#define SANTA 1
+#define ELF 2
+#define SOB 3
+
 /* sdílená struktura pro procesy se všema hodnotama */
 typedef struct
 {
@@ -34,17 +39,23 @@ typedef struct
     sem_t santa_sem;
     sem_t elf_sem;
     sem_t sob_sem;
-    sem_t vanoce_sem;
 
-    //output semafory
-    sem_t error_output_sem;
+    //semafory pro začátek Vánoc/dovolené elfů
+    sem_t vanoce_sem;
+    sem_t dovolenka_sem;
+    sem_t zaprahnout_sem;
+
+    //output semafor
     sem_t output_sem;
 
     //ostatní
-    size_t pocet_radku; //počítadlo řádků
-    pid_t *fronta_elfu; //fronta, ve které jsou elfové
-    FILE *output_f;     //soubor pro výstup
-    int cinnost;        //cinnost Santy
+    size_t pocet_radku;  //počítadlo řádků
+    FILE *output_f;      //soubor pro výstup
+    int cinnost;         //cinnost Santy
+    int *elfID;          //fronta, ve které jsou elfové
+    int pocet_ve_fronte; //počet elfů ve frontě
+    int nacteno_elfu;    //počet načtených elfů
+    int nacteno_sobu;    //počet načtených sobů
 } shared_t;
 
 /* Testuje, jestli argumenty byly zadány správně */
@@ -59,14 +70,17 @@ void init_sem(shared_t *shared, sem_t *sem_to_init, int pshared, unsigned int va
 /* Inicializuje všechny semafory */
 void init_all_sem(shared_t *shared);
 
+/* Vypíše text podle typu vybere Santa/elf/sob a když má ID tak i ID */
+void print_text(shared_t *shared, int type, int ID, char *text);
+
 /* Proces Santa Claus */
-void process_Santa_Clause(shared_t *shared);
+void proces_Santa_Claus(shared_t *shared);
 
 /* Proces sob  */
-void process_Reindeer(shared_t *shared);
+void proces_sob(shared_t *shared);
 
 /* Proces ell */
-void process_Elf(shared_t *shared);
+void proces_elf(shared_t *shared);
 
 /* Zničí všechny semafory */
 void destroy_all_sem(shared_t *shared);
