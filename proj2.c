@@ -139,6 +139,8 @@ void proces_Santa_Claus(shared_t *shared)
             {
                 shared->nacteno_elfu--;
                 print_text(shared, SANTA, 0, "helping elves");
+                //fronta /* for(int id = 0; id < FRONTA; id++) print_text(shared, ELF, shared->elf_ID, "get help"); */
+                sem_post(&shared->dovolenka_sem); //!v cyklu musí být
                 print_text(shared, SANTA, 0, "going to sleep");
                 shared->cinnost = 0;
                 sem_post(&shared->elf_sem);
@@ -147,20 +149,20 @@ void proces_Santa_Claus(shared_t *shared)
             }
             if (shared->cinnost == 2) //v případě sobů
             {
-                sem_post(&shared->vanoce_sem);
-
-                sem_post(&shared->sob_sem);
-                if (shared->nacteno_sobu >= 0)
-                    sem_post(&shared->elf_sem);
-
-                if (shared->nacteno_sobu == 0)
+                print_text(shared, SANTA, 0, "closing workshop");
+                for (int i = 1; i <= shared->pocet_sobu; i++)
                 {
-                    print_text(shared, SANTA, 0, "closing workshop");
                     sem_post(&shared->zaprahnout_sem);
-                    sem_post(&shared->dovolenka_sem);
-                    break;
+                    if (i == shared->pocet_sobu)
+                    {
+                        sem_post(&shared->vanoce_sem);
+                        break;
+                    }
                 }
-                shared->cinnost = 0;
+
+                /* sem_post(&shared->sob_sem);
+                if (shared->nacteno_sobu >= 0)
+                    sem_post(&shared->elf_sem); */
             }
         }
         sem_wait(&shared->vanoce_sem);
@@ -184,18 +186,14 @@ void proces_elf(shared_t *shared)
         {
             sem_wait(&shared->elf_sem);
             print_text(shared, ELF, i, "started");
-            srand(time(NULL));
+            srand(time(NULL) * i);
             usleep((rand() % (shared->cas_soba + 1)) * TIMECONVERT); //doba, po kterou elf pracuje sám
             print_text(shared, ELF, i, "need help");
-            /* if (shared->fronta_elfu < 3)
-            {
-                p
-            } */
+            /* if (shared->fronta_elfu < FRONTA) {} */
             shared->cinnost = 1;
             sem_post(&shared->santa_sem);
-            /* sem_wait(&shared->dovolenka_sem);
+            sem_wait(&shared->dovolenka_sem);
             print_text(shared, ELF, i, "taking holidays");
-            sem_post(&shared->dovolenka_sem); */
             exit(EXIT_SUCCESS);
         }
     }
@@ -215,16 +213,21 @@ void proces_sob(shared_t *shared)
         if (sob == 0)
         {
             sem_wait(&shared->sob_sem);
-            print_text(shared, SOB, i, "rstarted");
+            print_text(shared, SOB, i, "rstarted"); //začne
             shared->nacteno_sobu--;
-            srand(time(NULL));
-            usleep((rand() % (shared->cas_elfa + 1 - TMAX / 2)) * TIMECONVERT); //doba, po kterou elf pracuje sám
-            print_text(shared, SOB, i, "return home");
-            shared->cinnost = 2;
-            sem_post(&shared->santa_sem);
-            /* sem_wait(&shared->vanoce_sem);
+            srand(time(NULL) * i);                                                           //čas na dovolené
+            usleep((rand() % ((shared->cas_elfa + 1 - TMAX / 2) + TMAX / 2)) * TIMECONVERT); //vypočet doby, po kterou je na dovolené
+            print_text(shared, SOB, i, "return home");                                       //vrácení z dovolené
+            if (shared->nacteno_sobu == 0)
+            {
+                /* DEBUG */ printf("DOSTANE SE TO SEM?");
+                shared->cinnost = 2;
+                sem_post(&shared->santa_sem);
+            }
+            sem_wait(&shared->zaprahnout_sem);
             print_text(shared, SOB, i, "get hitched");
-            sem_post(&shared->vanoce_sem); */
+            sem_post(&shared->zaprahnout_sem);
+            sem_post(&shared->vanoce_sem);
             exit(EXIT_SUCCESS);
         }
     }

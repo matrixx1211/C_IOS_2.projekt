@@ -26,6 +26,9 @@
 #define ELF 2
 #define SOB 3
 
+/* počet elfů, kteří čekají ve frontě */
+#define FRONTA 3
+
 /* sdílená struktura pro procesy se všema hodnotama */
 typedef struct
 {
@@ -52,7 +55,7 @@ typedef struct
     size_t pocet_radku;  //počítadlo řádků
     FILE *output_f;      //soubor pro výstup
     int cinnost;         //cinnost Santy
-    int *elfID;          //fronta, ve které jsou elfové
+    int *elf_ID;          //fronta, ve které jsou elfové
     int pocet_ve_fronte; //počet elfů ve frontě
     int nacteno_elfu;    //počet načtených elfů
     int nacteno_sobu;    //počet načtených sobů
